@@ -183,14 +183,6 @@ fun ChatRoomListScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text(stringResource(R.string.chat_rooms)) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            Icons.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                },
                 actions = {
                     IconButton(
                         onClick = { viewModel.fetchChatRooms() },
