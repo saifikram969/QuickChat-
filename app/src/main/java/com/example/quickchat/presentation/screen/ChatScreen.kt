@@ -37,6 +37,8 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,6 +46,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Close
@@ -59,6 +62,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.compose.ui.window.PopupProperties
@@ -85,6 +89,7 @@ import java.nio.file.WatchEvent
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.coroutines.ContinuationInterceptor
+import kotlin.math.abs
 
 @Composable
 fun ChatScreen(
@@ -109,7 +114,7 @@ fun ChatScreen(
     val presenceStatus by viewModel.presenceStatus.collectAsState()
     val otherUserTyping by viewModel.otherUserTyping.collectAsState()
 
-// drop down mene delete chatroom or export chat
+    // drop down mene delete chatroom or export chat
     var showOptionsMenu by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -117,7 +122,8 @@ fun ChatScreen(
     val networkStatus by viewModel.networkStatus.collectAsState()
 
     val uiState by viewModel.uiState.collectAsState()
-
+    // Add reply state
+    var replyingToMessage by remember { mutableStateOf<ChatMessage?>(null) }
 
     // Handle lifecycle events for presence
     DisposableEffect(Unit) {
@@ -129,8 +135,6 @@ fun ChatScreen(
             viewModel.updateTypingStatus(roomId, currentUserId, false)
         }
     }
-
-
 
     // Combined initialization and cleanup effect
     DisposableEffect(roomId, currentUserId, otherUserId) {
@@ -150,14 +154,10 @@ fun ChatScreen(
         derivedStateOf {
             when (uiState) {
                 is ChatUiState.Success -> (uiState as ChatUiState.Success).roomName
-                else -> "Chat Room" // Fallback
+                else -> "Chat Room"
             }
         }
     }
-
-
-
-
 
     // Typing status tracking
     var isTyping by remember { mutableStateOf(false) }
@@ -228,10 +228,12 @@ fun ChatScreen(
                                                 senderId = currentUserId,
                                                 text = "",
                                                 imageUrl = fullImageUrl,
-                                                thumbnailUrl = thumbUrl,
+                                               // thumbnailUrl = thumbUrl,
+                                                repliedToMessage = replyingToMessage // Pass reply info
                                             )
                                             isUploading = false
                                             uploadProgress = 0f
+                                            replyingToMessage = null // Clear reply after sending
                                         }
                                         override fun onError(requestId: String?, error: ErrorInfo?) {
                                             Toast.makeText(context, "Thumbnail upload failed", Toast.LENGTH_SHORT).show()
@@ -316,7 +318,14 @@ fun ChatScreen(
                         fileSize = fileSize,
                         imageUrl = null,
                         isTemp = true,
-                        uploadProgress = 0f
+                        uploadProgress = 0f,
+                        // Include reply info in temp message
+                        repliedToMessageId = replyingToMessage?.id,
+                        repliedToMessageText = replyingToMessage?.text,
+                        repliedToMessageType = replyingToMessage?.messageType,
+                        repliedToSenderId = replyingToMessage?.senderId,
+                        repliedToImageUrl = replyingToMessage?.imageUrl,
+                        repliedToFileName = replyingToMessage?.fileName
                     )
 
                     // Add to UI immediately
@@ -363,6 +372,7 @@ fun ChatScreen(
                                 )
                                 isUploading = false
                                 tempFile.delete()
+                                replyingToMessage = null
                             }
 
                             override fun onError(requestId: String?, error: ErrorInfo?) {
@@ -502,6 +512,7 @@ fun ChatScreen(
             modifier = Modifier.padding(horizontal = 4.dp)
         )
 
+
         // Updated Options dropdown menu - opens upwards
         Box(
             modifier = Modifier.fillMaxWidth(),
@@ -513,7 +524,7 @@ fun ChatScreen(
                     modifier = Modifier
                         .width(220.dp)
                         .padding(end = 16.dp, top = 8.dp)
-                        .offset(y = (-16).dp), // Adjust this to position perfectly
+                        .offset(y = (-16).dp),
                     elevation = CardDefaults.cardElevation(8.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -724,7 +735,7 @@ fun ChatScreen(
             )
         }
 
-// Delete confirmation dialog
+        // Delete confirmation dialog
         if (showDeleteDialog) {
             AlertDialog(
                 onDismissRequest = { showDeleteDialog = false },
@@ -735,7 +746,7 @@ fun ChatScreen(
                         onClick = {
                             showDeleteDialog = false
                             viewModel.deleteChatroomForUser(roomId, currentUserId)
-                            onBackClick() // Navigate back after deletion
+                            onBackClick()
                         }
                     ) {
                         Text("Delete")
@@ -750,7 +761,6 @@ fun ChatScreen(
                 }
             )
         }
-
 
         if (isUploading) {
             LinearProgressIndicator(
@@ -778,11 +788,8 @@ fun ChatScreen(
                 val state = uiState as ChatUiState.Success
                 val (systemMessages, regularMessages) = state.messages.partition { it.isSystemMessage }
 
-
-
-
                 LaunchedEffect(state.messages) {
-                    delay(100) // Let layout settle
+                    delay(100)
 
                     // Scroll to the last index in LazyColumn — account for date headers
                     val groupedMessages = state.messages
@@ -798,7 +805,6 @@ fun ChatScreen(
                         listState.scrollToItem(totalItems - 1)
                     }
                 }
-
 
                 Box(modifier = Modifier
                     .weight(1f)
@@ -845,7 +851,13 @@ fun ChatScreen(
                                 groupedMessages.forEach { (dateKey, messagesForDate) ->
                                     item(key = "header_$dateKey") { DateHeader(dateKey) }
                                     items(messagesForDate, key = { it.id }) { message ->
-                                        MessageBubble(message, message.senderId == state.currentUserId)
+                                        MessageBubble(
+                                            message = message,
+                                            isCurrentUser = message.senderId == state.currentUserId,
+                                            onReply = { messageToReply ->
+                                                replyingToMessage = messageToReply
+                                            }
+                                        )
                                     }
                                 }
                             }
@@ -864,7 +876,7 @@ fun ChatScreen(
                         FloatingActionButton(
                             onClick = {
                                 coroutineScope.launch {
-                                    delay(100) // Allow layout to stabilize
+                                    delay(100)
                                     val groupedMessages = state.messages
                                         .filterNot { it.isSystemMessage }
                                         .groupBy {
@@ -906,163 +918,181 @@ fun ChatScreen(
                         shape = RoundedCornerShape(32.dp),
                         tonalElevation = 4.dp,
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                .heightIn(min = 48.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            // File attachment button - always visible
-                            IconButton(
-                                onClick = {
-                                    filePickerLauncher.launch("*/*") // Opens file picker for all file types
-                                },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(
-                                    Icons.Outlined.AttachFile,
-                                    contentDescription = "Attach File",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(24.dp))
+                        Column {
+                            // Reply preview in input field
+                            replyingToMessage?.let { message ->
+                                ReplyPreviewInInput(
+                                    message = message,
+                                    currentUserId = currentUserId,
+                                    onCancel = { replyingToMessage = null },
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
                             }
 
-                            Spacer(modifier = Modifier.width(4.dp))
-
-                            // Image picker button - hides when typing
-                            AnimatedVisibility(
-                                visible = messageText.isBlank(),
-                                enter = fadeIn(animationSpec = tween(100)),
-                                exit = fadeOut(animationSpec = tween(100)),
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                IconButton(
-                                    onClick = { imagePickerLauncher.launch("image/*") },
-                                    enabled = !isUploading
-                                ) {
-                                    if (isUploading) {
-                                        CircularProgressIndicator(
-                                            Modifier.size(20.dp),
-                                            strokeWidth = 2.dp)
-                                    } else {
-                                        Icon(
-                                            Icons.Outlined.Image,
-                                            contentDescription = "Pick Image",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(24.dp))
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.width(4.dp))
-
-                            TextField(
-                                value = messageText,
-                                onValueChange = {
-                                    if (it.length <= maxCharCount) {
-                                        messageText = it
-                                    }
-                                },
+                            Row(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .padding(end = 4.dp)
-                                    .heightIn(max = 100.dp),
-                                placeholder = { Text("How's your day?") },
-                                singleLine = false,
-                                maxLines = 4,
-                                shape = RoundedCornerShape(24.dp),
-                                colors = TextFieldDefaults.colors(
-                                    focusedContainerColor = Color.Transparent,
-                                    unfocusedContainerColor = Color.Transparent,
-                                    disabledContainerColor = Color.Transparent,
-                                    focusedIndicatorColor = Color.Transparent,
-                                    unfocusedIndicatorColor = Color.Transparent,
-                                    cursorColor = MaterialTheme.colorScheme.primary
-                                ),
-                                trailingIcon = {
-                                    if (messageText.isNotBlank()) {
-                                        IconButton(
-                                            onClick = { messageText = "" },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .heightIn(min = 48.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                // File attachment button - always visible
+                                IconButton(
+                                    onClick = {
+                                        filePickerLauncher.launch("*/*")
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.AttachFile,
+                                        contentDescription = "Attach File",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp))
+                                }
+
+                                Spacer(modifier = Modifier.width(4.dp))
+
+                                // Image picker button - hides when typing
+                                AnimatedVisibility(
+                                    visible = messageText.isBlank(),
+                                    enter = fadeIn(animationSpec = tween(100)),
+                                    exit = fadeOut(animationSpec = tween(100)),
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    IconButton(
+                                        onClick = { imagePickerLauncher.launch("image/*") },
+                                        enabled = !isUploading
+                                    ) {
+                                        if (isUploading) {
+                                            CircularProgressIndicator(
+                                                Modifier.size(20.dp),
+                                                strokeWidth = 2.dp)
+                                        } else {
                                             Icon(
-                                                Icons.Default.Close,
-                                                contentDescription = "Clear",
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(18.dp))
+                                                Icons.Outlined.Image,
+                                                contentDescription = "Pick Image",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(24.dp))
                                         }
                                     }
                                 }
 
-                            )
+                                Spacer(modifier = Modifier.width(4.dp))
 
-                            // Dynamic button that changes between mic and send
-                            Crossfade(
-                                targetState = messageText.isNotBlank(),
-                                animationSpec = tween(100),
-                                modifier = Modifier.size(40.dp)
-                            ) { showSendButton ->
-                                if (showSendButton) {
-                                    IconButton(
-                                        onClick = {
-                                            if (messageText.isNotBlank()) {
-                                                viewModel.sendMessage(roomId, currentUserId, messageText, null)
-                                                messageText = ""
-                                                viewModel.updateTypingStatus(roomId, currentUserId, false)
-                                                isTyping = false
-                                                coroutineScope.launch {
-                                                    delay(100)
-                                                    val groupedMessages = state.messages
-                                                        .filterNot { it.isSystemMessage }
-                                                        .groupBy {
-                                                            SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                                                                .format(Date(it.timestamp))
+                                TextField(
+                                    value = messageText,
+                                    onValueChange = {
+                                        if (it.length <= maxCharCount) {
+                                            messageText = it
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 4.dp)
+                                        .heightIn(max = 100.dp),
+                                    placeholder = { Text("How's your day?") },
+                                    singleLine = false,
+                                    maxLines = 4,
+                                    shape = RoundedCornerShape(24.dp),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        disabledContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = Color.Transparent,
+                                        unfocusedIndicatorColor = Color.Transparent,
+                                        cursorColor = MaterialTheme.colorScheme.primary
+                                    ),
+                                    trailingIcon = {
+                                        if (messageText.isNotBlank()) {
+                                            IconButton(
+                                                onClick = { messageText = "" },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Close,
+                                                    contentDescription = "Clear",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(18.dp))
+                                            }
+                                        }
+                                    }
+                                )
+
+                                // Dynamic button that changes between mic and send
+                                Crossfade(
+                                    targetState = messageText.isNotBlank(),
+                                    animationSpec = tween(100),
+                                    modifier = Modifier.size(40.dp)
+                                ) { showSendButton ->
+                                    if (showSendButton) {
+                                        IconButton(
+                                            onClick = {
+                                                if (messageText.isNotBlank()) {
+                                                    viewModel.sendMessage(
+                                                        roomId = roomId,
+                                                        senderId = currentUserId,
+                                                        text = messageText,
+                                                        imageUrl = null,
+                                                        repliedToMessage = replyingToMessage
+                                                    )
+                                                    messageText = ""
+                                                    replyingToMessage = null
+                                                    viewModel.updateTypingStatus(roomId, currentUserId, false)
+                                                    isTyping = false
+                                                    coroutineScope.launch {
+                                                        delay(100)
+                                                        val groupedMessages = state.messages
+                                                            .filterNot { it.isSystemMessage }
+                                                            .groupBy {
+                                                                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                                                                    .format(Date(it.timestamp))
+                                                            }
+                                                        val totalItems = groupedMessages.size +
+                                                                state.messages.count { !it.isSystemMessage }
+                                                        if (totalItems > 0) {
+                                                            listState.animateScrollToItem(totalItems - 1)
                                                         }
-                                                    val totalItems = groupedMessages.size +
-                                                            state.messages.count { !it.isSystemMessage }
-                                                    if (totalItems > 0) {
-                                                        listState.animateScrollToItem(totalItems - 1)
                                                     }
                                                 }
-                                            }
-                                        },
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(
-                                                color = Color.Black,
-                                                shape = RoundedCornerShape(50))
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Send,
-                                            contentDescription = "Send",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(20.dp))
-                                    }
-                                } else {
-                                    var isRecording by remember { mutableStateOf(false) }
-                                    IconButton(
-                                        onClick = {
-                                            isRecording = true
-                                            // TODO: Implement audio recording logic
-                                            Toast.makeText(context, "Audio recording coming soon", Toast.LENGTH_SHORT).show()
-                                        },
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(
-                                                MaterialTheme.colorScheme.primary,
-                                                shape = RoundedCornerShape(50)),
-                                        enabled = !isRecording
-                                    ) {
-                                        if (isRecording) {
-                                            CircularProgressIndicator(
-                                                color = Color.White,
-                                                modifier = Modifier.size(20.dp),
-                                                strokeWidth = 2.dp)
-                                        } else {
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(
+                                                    color = Color.Black,
+                                                    shape = RoundedCornerShape(50))
+                                        ) {
                                             Icon(
-                                                Icons.Outlined.Mic,
-                                                contentDescription = "Record Audio",
+                                                Icons.Default.Send,
+                                                contentDescription = "Send",
                                                 tint = Color.White,
                                                 modifier = Modifier.size(20.dp))
+                                        }
+                                    } else {
+                                        var isRecording by remember { mutableStateOf(false) }
+                                        IconButton(
+                                            onClick = {
+                                                isRecording = true
+                                                // TODO: Implement audio recording logic
+                                                Toast.makeText(context, "Audio recording coming soon", Toast.LENGTH_SHORT).show()
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(
+                                                    MaterialTheme.colorScheme.primary,
+                                                    shape = RoundedCornerShape(50)),
+                                            enabled = !isRecording
+                                        ) {
+                                            if (isRecording) {
+                                                CircularProgressIndicator(
+                                                    color = Color.White,
+                                                    modifier = Modifier.size(20.dp),
+                                                    strokeWidth = 2.dp)
+                                            } else {
+                                                Icon(
+                                                    Icons.Outlined.Mic,
+                                                    contentDescription = "Record Audio",
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(20.dp))
+                                            }
                                         }
                                     }
                                 }
@@ -1075,6 +1105,108 @@ fun ChatScreen(
     }
 }
 
+@Composable
+fun ReplyBar(
+    message: ChatMessage,
+    currentUserId: String,
+    onCancelReply: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.Reply,
+            contentDescription = "Replying to",
+            tint = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Replying to ${if (message.senderId == currentUserId) "yourself" else "them"}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Text(
+                text = when {
+                    message.imageUrl != null -> "📷 Photo"
+                    message.fileUrl != null -> "📎 ${message.fileName ?: "File"}"
+                    else -> message.text ?: ""
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        IconButton(onClick = onCancelReply) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Cancel reply",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+fun ReplyPreviewInInput(
+    message: ChatMessage,
+    currentUserId: String,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(24.dp)
+                .background(MaterialTheme.colorScheme.primary)
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Replying to ${if (message.senderId == currentUserId) "yourself" else "them"}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Text(
+                text = when {
+                    message.imageUrl != null -> "📷 Photo"
+                    message.fileUrl != null -> "📎 ${message.fileName ?: "File"}"
+                    else -> message.text ?: ""
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        IconButton(onClick = onCancel) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Cancel",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
 
 @Composable
 fun DateHeader(dateKey: String) {

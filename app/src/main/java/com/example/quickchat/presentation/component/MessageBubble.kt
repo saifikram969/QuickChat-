@@ -4,13 +4,16 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.SegmentedButtonDefaults.Icon
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -25,6 +29,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.quickchat.data.model.ChatMessage
 import com.example.quickchat.data.model.MessageStatus
+import com.example.quickchat.data.model.MessageType
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -32,6 +37,7 @@ import java.util.*
 fun MessageBubble(
     message: ChatMessage,
     isCurrentUser: Boolean,
+    onReply: (ChatMessage) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (message.isSystemMessage) {
@@ -43,29 +49,144 @@ fun MessageBubble(
                 .padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalAlignment = if (isCurrentUser) Alignment.End else Alignment.Start
         ) {
+            // Show reply preview if this message is a reply
+            if (message.repliedToMessageId != null) {
+                ReplyPreview(
+                    repliedMessage = message,
+                    isCurrentUser = isCurrentUser,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+
+            SwipeToReplyContainer(
+                message = message,
+                isCurrentUser = isCurrentUser,
+                onReply = onReply,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .wrapContentWidth(if (isCurrentUser) Alignment.End else Alignment.Start) // FIX: Add this line
+            ) {
+                when {
+                    message.imageUrl != null -> {
+                        ImageMessageComponent(
+                            message = message,
+                            isCurrentUser = isCurrentUser,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                    }
+
+                    message.fileUrl != null -> {
+                        FileMessageComponent(
+                            message = message,
+                            isCurrentUser = isCurrentUser,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                    }
+
+                    !message.text.isNullOrEmpty() -> {
+                        TextMessageBubble(
+                            message = message,
+                            isCurrentUser = isCurrentUser
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ReplyPreview(
+    repliedMessage: ChatMessage,
+    isCurrentUser: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val previewColor = if (isCurrentUser) {
+        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+    }
+
+    val borderColor = if (isCurrentUser) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+
+    Row(
+        modifier = modifier
+            .widthIn(max = 280.dp)
+            .padding(start = if (isCurrentUser) 0.dp else 8.dp, end = if (isCurrentUser) 8.dp else 0.dp)
+            .border(
+                width = 2.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(8.dp)
+            )
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Vertical line indicator
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(24.dp)
+                .background(borderColor)
+                .clip(RoundedCornerShape(2.dp))
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Column(
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(
+                text = "Replying to ${if (repliedMessage.repliedToSenderId == repliedMessage.senderId) "yourself" else "them"}",
+                style = MaterialTheme.typography.labelSmall,
+                color = previewColor,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
             when {
-                message.imageUrl != null -> {
-                    ImageMessageComponent(
-                        message = message,
-                        isCurrentUser = isCurrentUser,
-                        modifier = Modifier.padding(bottom = 4.dp)
+                repliedMessage.repliedToMessageType == MessageType.IMAGE -> {
+                    Text(
+                        text = "📷 Photo",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = previewColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                message.fileUrl != null -> {
-                    FileMessageComponent(
-                        message = message,
-                        isCurrentUser = isCurrentUser,
-                        modifier = Modifier.padding(bottom = 4.dp)
+                repliedMessage.repliedToMessageType == MessageType.FILE -> {
+                    Text(
+                        text = "📎 ${repliedMessage.repliedToFileName ?: "File"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = previewColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                !message.text.isNullOrEmpty() -> {
-                    TextMessageBubble(
-                        message = message,
-                        isCurrentUser = isCurrentUser
+                else -> {
+                    Text(
+                        text = repliedMessage.repliedToMessageText ?: "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = previewColor,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
         }
+
+        Spacer(modifier = Modifier.width(4.dp))
+
+        androidx.compose.material3.Icon(
+            imageVector = Icons.Filled.Reply,
+            contentDescription = "Reply",
+            tint = borderColor,
+            modifier = Modifier.size(16.dp)
+        )
     }
 }
 
@@ -89,6 +210,7 @@ private fun ImageMessageComponent(
 
     Box(
         modifier = modifier
+            .wrapContentWidth(if (isCurrentUser) Alignment.End else Alignment.Start)
             .widthIn(max = 280.dp)
             .clip(bubbleShape)
             .background(bubbleColor)
@@ -272,29 +394,11 @@ private fun FileMessageComponent(
         bottomStart = if (isCurrentUser) 16.dp else 4.dp,
         bottomEnd = if (isCurrentUser) 4.dp else 16.dp
     )
-    // Add this state to track if the file exists
-    val fileExists = remember { derivedStateOf { message.fileUrl != null } }
 
-    if (!fileExists.value) return
-    val (fileIcon, description) = when {
-        message.fileType?.startsWith("image/") == true -> Pair(Icons.Outlined.Image, "Image")
-        message.fileType?.startsWith("audio/") == true -> Pair(Icons.Outlined.AudioFile, "Audio")
-        message.fileType?.startsWith("video/") == true -> Pair(Icons.Outlined.Videocam, "Video")
-        message.fileType?.startsWith("application/pdf") == true -> Pair(Icons.Outlined.PictureAsPdf, "PDF")
-        else -> Pair(Icons.Outlined.InsertDriveFile, "File")
-    }
-
-    // Format file size
-    val fileSize = message.fileSize?.let { size ->
-        when {
-            size < 1024 -> "$size B"
-            size < 1024 * 1024 -> "${size / 1024} KB"
-            else -> "${size / (1024 * 1024)} MB"
-        }
-    } ?: ""
-
+    // FIX: Add alignment modifier
     Box(
         modifier = modifier
+            .wrapContentWidth(if (isCurrentUser) Alignment.End else Alignment.Start)
             .widthIn(max = 280.dp)
             .clip(bubbleShape)
             .background(bubbleColor)
@@ -327,8 +431,14 @@ private fun FileMessageComponent(
                     modifier = Modifier.size(48.dp)
                 ) {
                     Icon(
-                        imageVector = fileIcon,
-                        contentDescription = description,
+                        imageVector = when {
+                            message.fileType?.startsWith("image/") == true -> Icons.Outlined.Image
+                            message.fileType?.startsWith("audio/") == true -> Icons.Outlined.AudioFile
+                            message.fileType?.startsWith("video/") == true -> Icons.Outlined.Videocam
+                            message.fileType?.startsWith("application/pdf") == true -> Icons.Outlined.PictureAsPdf
+                            else -> Icons.Outlined.InsertDriveFile
+                        },
+                        contentDescription = "File",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(32.dp)
                     )
@@ -359,9 +469,15 @@ private fun FileMessageComponent(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    if (fileSize.isNotEmpty()) {
+                    // Format file size
+                    message.fileSize?.let { size ->
+                        val fileSizeText = when {
+                            size < 1024 -> "$size B"
+                            size < 1024 * 1024 -> "${size / 1024} KB"
+                            else -> "${size / (1024 * 1024)} MB"
+                        }
                         Text(
-                            text = fileSize,
+                            text = fileSizeText,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )

@@ -490,7 +490,8 @@ class ChatViewModel(
         fileUrl: String? = null,
         fileType: String? = null,
         fileName: String? = null,
-        fileSize: Long? = null
+        fileSize: Long? = null,
+        repliedToMessage: ChatMessage? = null
     ) {
         Log.d("SendMessage", " sendMessage called → roomId=$roomId, senderId=$senderId")
         Log.d("SendMessage", "Parameters → text=$text, imageUrl=$imageUrl, fileUrl=$fileUrl, fileType=$fileType, fileName=$fileName, fileSize=$fileSize")
@@ -519,7 +520,14 @@ class ChatViewModel(
                 fileUrl = fileUrl,
                 fileType = fileType ?: "",
                 fileName = fileName ?: "",
-                fileSize = fileSize
+                fileSize = fileSize,
+                // Reply fields
+                repliedToMessageId = repliedToMessage?.id,
+                repliedToMessageText = repliedToMessage?.text,
+                repliedToMessageType = repliedToMessage?.messageType,
+                repliedToSenderId = repliedToMessage?.senderId,
+                repliedToImageUrl = repliedToMessage?.imageUrl,
+                repliedToFileName = repliedToMessage?.fileName
             )
             Log.d("SendMessage", " Created ChatMessage object: $message")
             updateMessages(message)

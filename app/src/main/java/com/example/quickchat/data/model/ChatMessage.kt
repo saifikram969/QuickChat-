@@ -26,6 +26,14 @@ data class ChatMessage(
     val retryCount: Int = 0,
     val lastUpdated: Long = System.currentTimeMillis(),
 
+    // Reply functionality fields
+    val repliedToMessageId: String? = null,
+    val repliedToMessageText: String? = null,
+    val repliedToMessageType: MessageType? = null,
+    val repliedToSenderId: String? = null,
+    val repliedToImageUrl: String? = null,
+    val repliedToFileName: String? = null
+
 ) {
     @Exclude
     fun toFirestoreMap(): Map<String, Any?> {
@@ -49,6 +57,13 @@ data class ChatMessage(
             "fileSize" to fileSize,
             "uploadProgress" to uploadProgress,
             "isTemp" to isTemp,
+            // Reply fields
+            "repliedToMessageId" to repliedToMessageId,
+            "repliedToMessageText" to repliedToMessageText,
+            "repliedToMessageType" to repliedToMessageType?.name,
+            "repliedToSenderId" to repliedToSenderId,
+            "repliedToImageUrl" to repliedToImageUrl,
+            "repliedToFileName" to repliedToFileName
         )
     }
 
@@ -72,8 +87,17 @@ data class ChatMessage(
                 fileType = map["fileType"] as? String,
                 fileSize = (map["fileSize"] as? Number)?.toLong(),
                 uploadProgress = (map["uploadProgress"] as? Number)?.toFloat(),
-                isTemp = map["isTemp"] as? Boolean ?: false
+                isTemp = map["isTemp"] as? Boolean ?: false,
 
+                // Reply fields
+                repliedToMessageId = map["repliedToMessageId"] as? String,
+                repliedToMessageText = map["repliedToMessageText"] as? String,
+                repliedToMessageType = (map["repliedToMessageType"] as? String)?.let {
+                    MessageType.fromString(it)
+                },
+                repliedToSenderId = map["repliedToSenderId"] as? String,
+                repliedToImageUrl = map["repliedToImageUrl"] as? String,
+                repliedToFileName = map["repliedToFileName"] as? String
 
             )
         }
@@ -93,7 +117,7 @@ enum class MessageType {
             return try {
                 valueOf(value ?: "TEXT")
             } catch (e: IllegalArgumentException) {
-                FILE // Default fallback for unknown types
+                FILE
             }
         }
     }
@@ -107,7 +131,7 @@ enum class MessageStatus {
             return try {
                 valueOf(value ?: "SENDING")
             } catch (e: IllegalArgumentException) {
-                SENDING // Default fallback
+                SENDING
             }
         }
     }
