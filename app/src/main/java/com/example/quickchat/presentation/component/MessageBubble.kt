@@ -64,7 +64,7 @@ fun MessageBubble(
                 onReply = onReply,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .wrapContentWidth(if (isCurrentUser) Alignment.End else Alignment.Start) // FIX: Add this line
+                    .wrapContentWidth(if (isCurrentUser) Alignment.End else Alignment.Start)
             ) {
                 when {
                     message.imageUrl != null -> {
@@ -136,29 +136,52 @@ fun ReplyPreview(
 
         Spacer(modifier = Modifier.width(8.dp))
 
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
-            Text(
-                text = "Replying to ${if (repliedMessage.repliedToSenderId == repliedMessage.senderId) "yourself" else "them"}",
-                style = MaterialTheme.typography.labelSmall,
-                color = previewColor,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            when {
-                repliedMessage.repliedToMessageType == MessageType.IMAGE -> {
-                    Text(
-                        text = "📷 Photo",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = previewColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+        when {
+            repliedMessage.repliedToMessageType == MessageType.IMAGE && repliedMessage.repliedToImageUrl != null -> {
+                // Image message with thumbnail
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AsyncImage(
+                        model = repliedMessage.repliedToImageUrl,
+                        contentDescription = "Replied image",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(4.dp))
                     )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Column {
+                        Text(
+                            text = "Replying to ${if (repliedMessage.repliedToSenderId == repliedMessage.senderId) "yourself" else "them"}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = previewColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Photo",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = previewColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
-                repliedMessage.repliedToMessageType == MessageType.FILE -> {
+            }
+            repliedMessage.repliedToMessageType == MessageType.FILE -> {
+                // File message
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Replying to ${if (repliedMessage.repliedToSenderId == repliedMessage.senderId) "yourself" else "them"}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = previewColor,
+                        fontWeight = FontWeight.Bold
+                    )
                     Text(
                         text = "📎 ${repliedMessage.repliedToFileName ?: "File"}",
                         style = MaterialTheme.typography.bodySmall,
@@ -167,7 +190,18 @@ fun ReplyPreview(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                else -> {
+            }
+            else -> {
+                // Text message
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "Replying to ${if (repliedMessage.repliedToSenderId == repliedMessage.senderId) "yourself" else "them"}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = previewColor,
+                        fontWeight = FontWeight.Bold
+                    )
                     Text(
                         text = repliedMessage.repliedToMessageText ?: "",
                         style = MaterialTheme.typography.bodySmall,

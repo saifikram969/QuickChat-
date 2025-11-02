@@ -39,17 +39,13 @@ fun SwipeToReplyContainer(
 
     val dragEnabled = !message.isSystemMessage
 
-    // For own messages, drag to left; for others, drag to right
-    val swipeDirection = if (isCurrentUser) -1 else 1
-
     Box(
         modifier = modifier
     ) {
-        // Reply indicator (shown when swiping)
         if (abs(dragOffset) > 0 && dragEnabled) {
             ReplySwipeIndicator(
                 modifier = Modifier
-                    .align(if (isCurrentUser) Alignment.CenterEnd else Alignment.CenterStart)
+                    .align(Alignment.CenterStart)
                     .padding(horizontal = 16.dp)
                     .alpha(replyIconAlpha),
                 isActive = isDraggedEnough,
@@ -57,16 +53,19 @@ fun SwipeToReplyContainer(
             )
         }
 
-        // Content with drag gesture
         Box(
             modifier = Modifier
-                .offset(x = with(LocalDensity.current) { (dragOffset * swipeDirection).toDp() })
+                .offset(x = with(LocalDensity.current) { dragOffset.toDp() })
                 .draggable(
                     enabled = dragEnabled,
                     orientation = Orientation.Horizontal,
                     state = rememberDraggableState { delta ->
-                        val newOffset = dragOffset + delta * swipeDirection
-                        dragOffset = newOffset.coerceIn(0f, maxDragOffset)
+                        val newOffset = dragOffset + delta
+                        dragOffset = if (newOffset > 0) {
+                            newOffset.coerceAtMost(maxDragOffset)
+                        } else {
+                            0f
+                        }
                     },
                     onDragStopped = {
                         if (isDraggedEnough) onReply(message)
@@ -79,7 +78,6 @@ fun SwipeToReplyContainer(
     }
 }
 
-
 @Composable
 private fun ReplySwipeIndicator(
     modifier: Modifier = Modifier,
@@ -89,17 +87,16 @@ private fun ReplySwipeIndicator(
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = if (isCurrentUser) Arrangement.Start else Arrangement.End
+        horizontalArrangement = Arrangement.Start
     ) {
-        if (isCurrentUser) {
-            Text(
-                text = "Reply",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (isActive) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-        }
+        Text(
+            text = "Reply",
+            style = MaterialTheme.typography.labelSmall,
+            color = if (isActive) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+        )
+
+        Spacer(modifier = Modifier.width(4.dp))
 
         Icon(
             imageVector = Icons.Default.Reply,
@@ -107,15 +104,5 @@ private fun ReplySwipeIndicator(
             tint = if (isActive) MaterialTheme.colorScheme.primary
             else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
         )
-
-        if (!isCurrentUser) {
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = "Reply",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (isActive) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-            )
-        }
     }
 }
